@@ -2,26 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bio-Digital Fractal Interface</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        canvas { display: block; }
-        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; color: white; }
+    <title>Fractal Interface</title>
+    <link rel="stylesheet" href="style.css"> <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #ui-layer { position: absolute; top: 20px; left: 20px; z-index: 10; color: white; pointer-events: none; }
         #start-btn { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 15px 35px; font-size: 18px; cursor: pointer; pointer-events: all;
-            background: #fff; border: none; border-radius: 5px; font-weight: bold;
+            padding: 15px 30px; cursor: pointer; z-index: 20;
         }
-        video { transform: scaleX(-1); position: absolute; bottom: 15px; right: 15px; width: 180px; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; }
-        .dg.main { pointer-events: all; } /* Ensure GUI is clickable */
+        video { transform: scaleX(-1); position: absolute; bottom: 10px; right: 10px; width: 150px; opacity: 0.5; }
     </style>
 </head>
 <body>
 
     <div id="ui-layer">
-        <h1 style="margin:0; font-weight: 300; letter-spacing: 2px;">FRACTAL FEEDBACK</h1>
-        <p style="opacity: 0.7;">Hand: Move & Pinch | Audio: Pulse</p>
+        <h1>FRACTAL CORE</h1>
+        <p>GitHub Pages Deployment</p>
     </div>
 
     <button id="start-btn">INITIALIZE CORE</button>
@@ -36,183 +32,6 @@
         }
     </script>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { GUI } from 'lil-gui';
-        import { Hands } from "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js";
-
-        // --- GLOBAL STATE ---
-        let scene, camera, renderer, material, audioData = 0, pinchValue = 0;
-        let rtA, rtB, feedbackScene, feedbackMaterial;
-        let handX = 0.5, handY = 0.5;
-
-        const params = {
-            trailDensity: 0.88,
-            complexity: 8,
-            audioSensitivity: 1.5,
-            colorShift: 0.5,
-            zoom: 3.5,
-            speed: 0.2
-        };
-
-        // --- SHADERS ---
-        const fractalFS = `
-            uniform float uTime;
-            uniform float uAudio;
-            uniform vec2 uHandPos;
-            uniform float uPinch;
-            uniform vec2 uRes;
-            uniform float uComplexity;
-            uniform float uZoom;
-
-            float map(vec3 p) {
-                p.xz *= mat2(cos(uTime), sin(uTime), -sin(uTime), cos(uTime));
-                float scale = 1.1 + (uAudio * 0.3);
-                for(int i = 0; i < 12; i++) {
-                    if(float(i) > uComplexity) break;
-                    p = abs(p) - vec3(uHandPos.x * 1.5, uHandPos.y * 1.5, 1.0);
-                    float r2 = dot(p, p);
-                    p *= clamp(max(0.8/r2, 0.8), 0.0, 2.2) * scale;
-                }
-                return length(p) * pow(scale, -8.0);
-            }
-
-            void main() {
-                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / uRes.y;
-                vec3 ro = vec3(0, 0, -uZoom);
-                vec3 rd = normalize(vec3(uv, 1.0));
-                float d, t = 0.0;
-                for(int i = 0; i < 64; i++) {
-                    d = map(ro + rd * t);
-                    if(d < 0.001 || t > 10.0) break;
-                    t += d;
-                }
-                vec3 baseCol = mix(vec3(0.1, 0.4, 0.9), vec3(1.0, 0.2, 0.1), uPinch);
-                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.05/d * baseCol) : vec4(0).rgb;
-                gl_FragColor = vec4(col, 1.0);
-            }
-        `;
-
-        const feedbackFS = `
-            uniform sampler2D tNew;
-            uniform sampler2D tOld;
-            uniform float uTrail;
-            varying vec2 vUv;
-            void main() {
-                vec4 n = texture2D(tNew, vUv);
-                vec4 o = texture2D(tOld, vUv);
-                gl_FragColor = mix(n, o, uTrail);
-            }
-        `;
-
-        // --- INITIALIZATION ---
-        function setupGUI() {
-            const gui = new GUI();
-            gui.add(params, 'trailDensity', 0.5, 0.99).name('Ghost Trails');
-            gui.add(params, 'complexity', 2, 12, 1).name('Fractal Depth');
-            gui.add(params, 'audioSensitivity', 0, 5).name('Mic Pulse');
-            gui.add(params, 'zoom', 1, 8).name('Zoom');
-            gui.add(params, 'speed', 0, 1).name('Rotate Speed');
-        }
-
-        async function initAudio() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const ctx = new AudioContext();
-                const analyzer = ctx.createAnalyser();
-                ctx.createMediaStreamSource(stream).connect(analyzer);
-                const data = new Uint8Array(analyzer.frequencyBinCount);
-                const update = () => {
-                    analyzer.getByteFrequencyData(data);
-                    let sum = 0; for(let v of data) sum += v;
-                    audioData = (sum / data.length / 255) * params.audioSensitivity;
-                    requestAnimationFrame(update);
-                };
-                update();
-            } catch(e) { console.log("Audio denied"); }
-        }
-
-        async function initHands() {
-            const video = document.getElementById('webcam');
-            const hands = new Hands({locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6 });
-            hands.onResults(res => {
-                if(res.multiHandLandmarks?.length) {
-                    const h = res.multiHandLandmarks[0];
-                    handX = h[8].x; handY = h[8].y;
-                    const d = Math.hypot(h[8].x - h[4].x, h[8].y - h[4].y, h[8].z - h[4].z);
-                    pinchValue = THREE.MathUtils.lerp(pinchValue, 1.0 - Math.min(Math.max((d - 0.05)/0.15, 0), 1), 0.2);
-                }
-            });
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
-            const detect = async () => { await hands.send({image: video}); requestAnimationFrame(detect); };
-            detect();
-        }
-
-        function initThree() {
-            scene = new THREE.Scene();
-            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            const rtParams = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat };
-            rtA = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, rtParams);
-            rtB = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, rtParams);
-
-            material = new THREE.ShaderMaterial({
-                uniforms: { uTime: {value:0}, uAudio: {value:0}, uHandPos: {value: new THREE.Vector2()}, uPinch: {value:0}, uRes: {value: new THREE.Vector2(window.innerWidth, window.innerHeight)}, uComplexity: {value:8}, uZoom: {value:3.5} },
-                fragmentShader: fractalFS,
-                vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`
-            });
-            scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
-
-            feedbackScene = new THREE.Scene();
-            feedbackMaterial = new THREE.ShaderMaterial({
-                uniforms: { tNew: {value:null}, tOld: {value:null}, uTrail: {value:0.88} },
-                fragmentShader: feedbackFS,
-                vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`
-            });
-            feedbackScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), feedbackMaterial));
-        }
-
-        function animate(time) {
-            material.uniforms.uTime.value = time * 0.001 * params.speed;
-            material.uniforms.uAudio.value = audioData;
-            material.uniforms.uHandPos.value.set(handX, handY);
-            material.uniforms.uPinch.value = pinchValue;
-            material.uniforms.uComplexity.value = params.complexity;
-            material.uniforms.uZoom.value = params.zoom;
-            feedbackMaterial.uniforms.uTrail.value = params.trailDensity;
-
-            renderer.setRenderTarget(rtA);
-            renderer.render(scene, camera);
-
-            feedbackMaterial.uniforms.tNew.value = rtA.texture;
-            feedbackMaterial.uniforms.tOld.value = rtB.texture;
-
-            renderer.setRenderTarget(null);
-            renderer.render(feedbackScene, camera);
-
-            renderer.setRenderTarget(rtB);
-            renderer.render(feedbackScene, camera);
-            renderer.setRenderTarget(null);
-
-            requestAnimationFrame(animate);
-        }
-
-        document.getElementById('start-btn').onclick = (e) => {
-            e.target.remove();
-            initThree(); setupGUI(); initAudio(); initHands(); animate();
-        };
-
-        window.onresize = () => {
-            const w = window.innerWidth, h = window.innerHeight;
-            renderer.setSize(w, h);
-            rtA.setSize(w, h); rtB.setSize(w, h);
-            material.uniforms.uRes.value.set(w, h);
-        };
-    </script>
+    <script type="module" src="app.js"></script>
 </body>
 </html>
