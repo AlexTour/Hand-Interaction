@@ -5,19 +5,20 @@
     <title>Bio-Digital Fractal Interface</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     
     <style>
-        :root { --neon: #00ffcc; --glass: rgba(255, 255, 255, 0.1); }
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: white; }
+        :root { --neon: #00ffcc; --bg: #050505; }
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: 'Courier New', monospace; color: white; }
         
+        /* UI Panel */
         #side-panel {
             position: fixed; top: 0; left: -300px; width: 300px; height: 100%;
-            background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(15px);
+            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(15px);
             border-right: 1px solid var(--neon); transition: 0.4s ease-in-out;
             z-index: 1000; padding: 25px; box-sizing: border-box;
         }
         #side-panel.open { left: 0; }
-        
         #panel-toggle {
             position: absolute; top: 50%; right: -40px; width: 40px; height: 100px;
             background: var(--neon); color: black; border: none; cursor: pointer;
@@ -25,47 +26,59 @@
             border-radius: 0 10px 10px 0; transform: translateY(-50%);
         }
 
-        .control-group { margin-bottom: 25px; }
-        label { display: block; margin-bottom: 8px; font-size: 0.8rem; color: var(--neon); }
+        .control-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.7rem; color: var(--neon); letter-spacing: 1px; }
         input[type=range] { width: 100%; cursor: pointer; accent-color: var(--neon); }
         
+        /* Overlays */
+        #status { position: absolute; top: 20px; left: 20px; color: var(--neon); font-size: 0.8rem; z-index: 50; text-transform: uppercase; }
         #start-btn { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 20px 40px; font-size: 1.2rem; cursor: pointer; z-index: 100;
-            background: var(--neon); border: none; border-radius: 50px; font-weight: bold;
-            box-shadow: 0 0 30px var(--neon);
+            padding: 25px 50px; font-size: 1.2rem; cursor: pointer; z-index: 2000;
+            background: var(--neon); border: none; border-radius: 5px; font-weight: bold;
+            box-shadow: 0 0 40px rgba(0, 255, 204, 0.4);
         }
         
-        #status { position: absolute; top: 20px; right: 20px; color: var(--neon); font-size: 0.7rem; }
-        video { transform: scaleX(-1); position: absolute; bottom: 10px; right: 10px; width: 120px; border-radius: 10px; opacity: 0.4; }
-        h2 { color: var(--neon); font-size: 1.2rem; border-bottom: 1px solid var(--neon); padding-bottom: 10px; }
+        /* Debug View */
+        #debug-canvas { position: absolute; bottom: 10px; right: 10px; width: 240px; height: 180px; 
+                        border: 1px solid var(--neon); border-radius: 8px; transform: scaleX(-1); background: #000; }
+        video { display: none; } /* Hide raw video, we use debug-canvas */
     </style>
 </head>
 <body>
 
-    <div id="status">CORE: STANDBY</div>
-    <button id="start-btn">INITIALIZE CORE & AUDIO</button>
-    <video id="webcam" autoplay playsinline></video>
+    <div id="status">SYSTEM: STANDBY</div>
+    <button id="start-btn">INITIALIZE NEURAL LINK</button>
+    <video id="webcam"></video>
+    <canvas id="debug-canvas"></canvas>
 
     <div id="side-panel">
         <button id="panel-toggle">SETTINGS</button>
-        <h2>OPERATIONS</h2>
-        <p><b>Y-Axis:</b> Synth Pitch<br><b>Pinch:</b> Color/Distortion</p>
+        <h2 style="color:var(--neon); font-size: 1rem;">FRACTAL PARAMETERS</h2>
         
         <div class="control-group">
-            <label>FRACTAL COMPLEXITY</label>
-            <input type="range" id="param-complexity" min="2" max="15" value="8">
+            <label>GEOMETRIC RECURSION</label>
+            <input type="range" id="param-complexity" min="2" max="14" value="8">
         </div>
         
         <div class="control-group">
             <label>SYNTH VOLUME</label>
-            <input type="range" id="param-volume" min="0" max="0.5" step="0.01" value="0.2">
+            <input type="range" id="param-volume" min="0" max="0.5" step="0.01" value="0.15">
         </div>
 
         <div class="control-group">
-            <label>ROTATION SPEED</label>
-            <input type="range" id="param-speed" min="0" max="2" step="0.1" value="0.5">
+            <label>FIELD OF VIEW</label>
+            <input type="range" id="param-zoom" min="1" max="7" step="0.1" value="3.5">
         </div>
+
+        <div class="control-group">
+            <label>DEBUG SKELETON</label>
+            <input type="checkbox" id="param-debug" checked>
+        </div>
+        
+        <p style="font-size: 0.6rem; opacity: 0.6; margin-top: 40px;">
+            Y-AXIS: Pitch Frequency<br>PINCH: Harmonic Filter
+        </p>
     </div>
 
     <script type="importmap">
@@ -75,24 +88,22 @@
     <script type="module">
         import * as THREE from 'three';
 
+        // --- STATE ---
         let scene, camera, renderer, material, pinchValue = 0;
-        let handX = 0.5, handY = 0.5;
-        
-        // Audio State
-        let audioCtx, oscillator, gainNode, filter;
-
-        const config = { complexity: 8, zoom: 3.5, speed: 0.5, glow: 0.05, volume: 0.2 };
+        let handX = 0.5, handY = 0.5, isTracking = false;
+        let audioCtx, osc, gain, filter;
+        const config = { complexity: 8, volume: 0.15, zoom: 3.5, debug: true };
 
         // --- SHADER ---
         const fractalFS = `
             uniform float uTime; uniform vec2 uHandPos; uniform float uPinch;
             uniform vec2 uRes; uniform float uComplexity; uniform float uZoom;
             float map(vec3 p) {
-                p.xz *= mat2(cos(uTime), sin(uTime), -sin(uTime), cos(uTime));
-                float scale = 1.3;
+                p.xz *= mat2(cos(uTime*0.2), sin(uTime*0.2), -sin(uTime*0.2), cos(uTime*0.2));
+                float scale = 1.3 + (uPinch * 0.2);
                 for(int i = 0; i < 15; i++) {
                     if(float(i) > uComplexity) break;
-                    p = abs(p) - vec3(uHandPos.x * 1.5, uHandPos.y * 1.5, 1.0);
+                    p = abs(p) - vec3(uHandPos.x * 1.6, uHandPos.y * 1.6, 1.0);
                     float r2 = dot(p, p);
                     p *= clamp(max(0.8/r2, 0.8), 0.0, 2.2) * scale;
                 }
@@ -107,62 +118,73 @@
                     if(d < 0.001 || t > 10.0) break;
                     t += d;
                 }
-                vec3 baseCol = mix(vec3(0.0, 0.8, 1.0), vec3(1.0, 0.1, 0.4), uPinch);
-                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.05/d * baseCol) : vec3(0.01);
+                vec3 baseCol = mix(vec3(0.0, 0.9, 0.7), vec3(1.0, 0.1, 0.3), uPinch);
+                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.06/d * baseCol) : vec3(0.02, 0.02, 0.03);
                 gl_FragColor = vec4(col, 1.0);
             }
         `;
 
         // --- AUDIO ENGINE ---
-        function initSynth() {
+        function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            oscillator = audioCtx.createOscillator();
-            gainNode = audioCtx.createGain();
+            osc = audioCtx.createOscillator();
+            gain = audioCtx.createGain();
             filter = audioCtx.createBiquadFilter();
-
-            oscillator.type = 'sawtooth';
+            
+            osc.type = 'sawtooth';
             filter.type = 'lowpass';
+            osc.connect(filter).connect(gain).connect(audioCtx.destination);
             
-            oscillator.connect(filter);
-            filter.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-
-            gainNode.gain.value = 0; // Start silent
-            oscillator.start();
+            gain.gain.value = 0;
+            osc.start();
         }
 
-        function updateSynth() {
-            if (!oscillator) return;
-            // Map Hand Y to Frequency (Higher hand = higher pitch)
-            const freq = 100 + (1.0 - handY) * 400;
-            oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
-            
-            // Pinch increases Filter Cutoff (brighter sound)
-            filter.frequency.setTargetAtTime(400 + (pinchValue * 2000), audioCtx.currentTime, 0.1);
-            
-            // Base volume from slider
-            gainNode.gain.setTargetAtTime(config.volume, audioCtx.currentTime, 0.1);
-        }
-
-        // --- HANDS & THREE ---
-        async function initHands() {
+        // --- HAND TRACKING ---
+        async function initAI() {
             const video = document.getElementById('webcam');
-            const hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-            hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.5 });
+            const debugCanvas = document.getElementById('debug-canvas');
+            const debugCtx = debugCanvas.getContext('2d');
+
+            const hands = new window.Hands({
+                locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+            });
+
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+
             hands.onResults((res) => {
+                debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+                debugCtx.drawImage(res.image, 0, 0, debugCanvas.width, debugCanvas.height);
+                
                 if (res.multiHandLandmarks && res.multiHandLandmarks[0]) {
                     const h = res.multiHandLandmarks[0];
+                    if (config.debug) {
+                        window.drawConnectors(debugCtx, h, window.HAND_CONNECTIONS, {color: '#00ffcc', lineWidth: 2});
+                        window.drawLandmarks(debugCtx, h, {color: '#ff0055', lineWidth: 1});
+                    }
+                    
                     handX = h[8].x; handY = h[8].y;
                     const d = Math.hypot(h[8].x - h[4].x, h[8].y - h[4].y);
                     pinchValue = THREE.MathUtils.lerp(pinchValue, (d < 0.06 ? 1 : 0), 0.1);
-                    document.getElementById('status').innerText = "TRACKING: ACTIVE";
+                    
+                    document.getElementById('status').innerText = "SYSTEM: LINK ACTIVE";
+                    
+                    // Update Synth
+                    if (osc) {
+                        osc.frequency.setTargetAtTime(100 + (1.0 - handY) * 500, audioCtx.currentTime, 0.1);
+                        filter.frequency.setTargetAtTime(300 + (pinchValue * 3000), audioCtx.currentTime, 0.1);
+                        gain.gain.setTargetAtTime(config.volume, audioCtx.currentTime, 0.1);
+                    }
+                } else {
+                    document.getElementById('status').innerText = "SYSTEM: SEARCHING...";
+                    if(gain) gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
                 }
             });
+
             const cameraFeed = new window.Camera(video, {
                 onFrame: async () => { await hands.send({image: video}); },
                 width: 640, height: 480
             });
-            await cameraFeed.start();
+            return cameraFeed.start();
         }
 
         function initThree() {
@@ -180,29 +202,40 @@
         }
 
         function animate(time) {
-            material.uniforms.uTime.value = time * 0.001 * config.speed;
+            material.uniforms.uTime.value = time * 0.001;
             material.uniforms.uHandPos.value.set(handX, handY);
             material.uniforms.uPinch.value = pinchValue;
             material.uniforms.uComplexity.value = config.complexity;
-            updateSynth();
+            material.uniforms.uZoom.value = config.zoom;
             renderer.render(scene, camera);
             requestAnimationFrame(animate);
         }
 
-        document.getElementById('start-btn').onclick = async () => {
+        document.getElementById('start-btn').onclick = async (e) => {
+            e.target.innerText = "CALIBRATING...";
             try {
                 initThree();
-                initSynth();
-                await initHands();
+                initAudio();
+                await initAI();
                 animate();
-                document.getElementById('start-btn').remove();
-            } catch (err) { alert(err); }
+                e.target.remove();
+            } catch (err) {
+                alert("Interface Failed: " + err);
+                e.target.innerText = "HARDWARE ERROR";
+            }
         };
 
+        // UI Listeners
         document.getElementById('panel-toggle').onclick = () => document.getElementById('side-panel').classList.toggle('open');
         document.getElementById('param-complexity').oninput = (e) => config.complexity = parseFloat(e.target.value);
         document.getElementById('param-volume').oninput = (e) => config.volume = parseFloat(e.target.value);
-        document.getElementById('param-speed').oninput = (e) => config.speed = parseFloat(e.target.value);
+        document.getElementById('param-zoom').oninput = (e) => config.zoom = parseFloat(e.target.value);
+        document.getElementById('param-debug').onchange = (e) => config.debug = e.target.checked;
+        
+        window.onresize = () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+        };
     </script>
 </body>
 </html>
