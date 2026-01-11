@@ -2,34 +2,141 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Fractal Hand Control</title>
+    <title>Bio-Digital Fractal Interface</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
         #start-btn { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             padding: 20px 40px; font-size: 1.2rem; cursor: pointer; z-index: 100;
-            background: white; border: none; border-radius: 8px; font-weight: bold;
+            background: #00ffcc; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 0 20px #00ffcc;
         }
-        video { transform: scaleX(-1); position: absolute; bottom: 10px; right: 10px; width: 160px; border: 1px solid #444; }
+        #status { position: absolute; top: 20px; left: 20px; color: #00ffcc; font-family: monospace; }
+        video { transform: scaleX(-1); position: absolute; bottom: 10px; right: 10px; width: 160px; border-radius: 10px; opacity: 0.3; }
     </style>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
+    <div id="status">SYSTEM: READY</div>
     <button id="start-btn">INITIALIZE CORE</button>
     <video id="webcam" autoplay playsinline></video>
 
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm"
-            }
-        }
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
     </script>
 
-    <script type="module" src="app.js"></script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        let scene, camera, renderer, material, pinchValue = 0;
+        let handX = 0.5, handY = 0.5;
+
+        // --- THE FRACTAL MATH ---
+        const fractalFS = `
+            uniform float uTime;
+            uniform vec2 uHandPos;
+            uniform float uPinch;
+            uniform vec2 uRes;
+            float map(vec3 p) {
+                p.xz *= mat2(cos(uTime*0.2), sin(uTime*0.2), -sin(uTime*0.2), cos(uTime*0.2));
+                float scale = 1.3;
+                for(int i = 0; i < 8; i++) {
+                    p = abs(p) - vec3(uHandPos.x * 1.5, uHandPos.y * 1.5, 1.0);
+                    float r2 = dot(p, p);
+                    p *= clamp(max(0.8/r2, 0.8), 0.0, 2.2) * scale;
+                }
+                return length(p) * pow(scale, -8.0);
+            }
+            void main() {
+                vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / uRes.y;
+                vec3 ro = vec3(0, 0, -3.5);
+                vec3 rd = normalize(vec3(uv, 1.0));
+                float d, t = 0.0;
+                for(int i = 0; i < 64; i++) {
+                    d = map(ro + rd * t);
+                    if(d < 0.001 || t > 10.0) break;
+                    t += d;
+                }
+                vec3 baseCol = mix(vec3(0.0, 0.8, 1.0), vec3(1.0, 0.1, 0.4), uPinch);
+                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.05/d * baseCol) : vec3(0.02);
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        async function initHands() {
+            const video = document.getElementById('webcam');
+            const hands = new window.Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
+            hands.onResults((res) => {
+                if (res.multiHandLandmarks && res.multiHandLandmarks[0]) {
+                    const h = res.multiHandLandmarks[0];
+                    handX = h[8].x; handY = h[8].y;
+                    const dist = Math.hypot(h[8].x - h[4].x, h[8].y - h[4].y);
+                    pinchValue = THREE.MathUtils.lerp(pinchValue, (dist < 0.05 ? 1 : 0), 0.1);
+                    document.getElementById('status').innerText = "HAND TRACKED: ACTIVE";
+                } else {
+                    document.getElementById('status').innerText = "HAND TRACKED: SEARCHING...";
+                }
+            });
+
+            const cameraFeed = new window.Camera(video, {
+                onFrame: async () => { await hands.send({image: video}); },
+                width: 640, height: 480
+            });
+            await cameraFeed.start();
+        }
+
+        function initThree() {
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uHandPos: { value: new THREE.Vector2(0.5, 0.5) },
+                    uPinch: { value: 0 },
+                    uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+                },
+                vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+                fragmentShader: fractalFS
+            });
+
+            scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+        }
+
+        function animate(time) {
+            material.uniforms.uTime.value = time * 0.001;
+            material.uniforms.uHandPos.value.set(handX, handY);
+            material.uniforms.uPinch.value = pinchValue;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        document.getElementById('start-btn').onclick = async () => {
+            document.getElementById('start-btn').innerText = "LOADING AI...";
+            try {
+                initThree();
+                await initHands();
+                animate();
+                document.getElementById('start-btn').remove();
+            } catch (err) {
+                alert("Camera access denied or hardware error: " + err);
+                document.getElementById('start-btn').innerText = "ERROR - TRY AGAIN";
+            }
+        };
+
+        window.onresize = () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            material.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
+        };
+    </script>
 </body>
 </html>
