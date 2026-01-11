@@ -7,21 +7,66 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; color: white; }
+        :root { --neon: #00ffcc; --glass: rgba(255, 255, 255, 0.1); }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: white; }
+        
+        #side-panel {
+            position: fixed; top: 0; left: -300px; width: 300px; height: 100%;
+            background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(15px);
+            border-right: 1px solid var(--neon); transition: 0.4s ease-in-out;
+            z-index: 1000; padding: 25px; box-sizing: border-box;
+        }
+        #side-panel.open { left: 0; }
+        
+        #panel-toggle {
+            position: absolute; top: 50%; right: -40px; width: 40px; height: 100px;
+            background: var(--neon); color: black; border: none; cursor: pointer;
+            writing-mode: vertical-rl; text-orientation: mixed; font-weight: bold;
+            border-radius: 0 10px 10px 0; transform: translateY(-50%);
+        }
+
+        .control-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.8rem; color: var(--neon); }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--neon); }
+        
         #start-btn { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             padding: 20px 40px; font-size: 1.2rem; cursor: pointer; z-index: 100;
-            background: #00ffcc; border: none; border-radius: 50px; font-weight: bold; box-shadow: 0 0 20px #00ffcc;
+            background: var(--neon); border: none; border-radius: 50px; font-weight: bold;
+            box-shadow: 0 0 30px var(--neon);
         }
-        #status { position: absolute; top: 20px; left: 20px; color: #00ffcc; font-family: monospace; }
-        video { transform: scaleX(-1); position: absolute; bottom: 10px; right: 10px; width: 160px; border-radius: 10px; opacity: 0.3; }
+        
+        #status { position: absolute; top: 20px; right: 20px; color: var(--neon); font-size: 0.7rem; }
+        video { transform: scaleX(-1); position: absolute; bottom: 10px; right: 10px; width: 120px; border-radius: 10px; opacity: 0.4; }
+        h2 { color: var(--neon); font-size: 1.2rem; border-bottom: 1px solid var(--neon); padding-bottom: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="status">SYSTEM: READY</div>
-    <button id="start-btn">INITIALIZE CORE</button>
+    <div id="status">CORE: STANDBY</div>
+    <button id="start-btn">INITIALIZE CORE & AUDIO</button>
     <video id="webcam" autoplay playsinline></video>
+
+    <div id="side-panel">
+        <button id="panel-toggle">SETTINGS</button>
+        <h2>OPERATIONS</h2>
+        <p><b>Y-Axis:</b> Synth Pitch<br><b>Pinch:</b> Color/Distortion</p>
+        
+        <div class="control-group">
+            <label>FRACTAL COMPLEXITY</label>
+            <input type="range" id="param-complexity" min="2" max="15" value="8">
+        </div>
+        
+        <div class="control-group">
+            <label>SYNTH VOLUME</label>
+            <input type="range" id="param-volume" min="0" max="0.5" step="0.01" value="0.2">
+        </div>
+
+        <div class="control-group">
+            <label>ROTATION SPEED</label>
+            <input type="range" id="param-speed" min="0" max="2" step="0.1" value="0.5">
+        </div>
+    </div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -32,17 +77,21 @@
 
         let scene, camera, renderer, material, pinchValue = 0;
         let handX = 0.5, handY = 0.5;
+        
+        // Audio State
+        let audioCtx, oscillator, gainNode, filter;
 
-        // --- THE FRACTAL MATH ---
+        const config = { complexity: 8, zoom: 3.5, speed: 0.5, glow: 0.05, volume: 0.2 };
+
+        // --- SHADER ---
         const fractalFS = `
-            uniform float uTime;
-            uniform vec2 uHandPos;
-            uniform float uPinch;
-            uniform vec2 uRes;
+            uniform float uTime; uniform vec2 uHandPos; uniform float uPinch;
+            uniform vec2 uRes; uniform float uComplexity; uniform float uZoom;
             float map(vec3 p) {
-                p.xz *= mat2(cos(uTime*0.2), sin(uTime*0.2), -sin(uTime*0.2), cos(uTime*0.2));
+                p.xz *= mat2(cos(uTime), sin(uTime), -sin(uTime), cos(uTime));
                 float scale = 1.3;
-                for(int i = 0; i < 8; i++) {
+                for(int i = 0; i < 15; i++) {
+                    if(float(i) > uComplexity) break;
                     p = abs(p) - vec3(uHandPos.x * 1.5, uHandPos.y * 1.5, 1.0);
                     float r2 = dot(p, p);
                     p *= clamp(max(0.8/r2, 0.8), 0.0, 2.2) * scale;
@@ -51,8 +100,7 @@
             }
             void main() {
                 vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / uRes.y;
-                vec3 ro = vec3(0, 0, -3.5);
-                vec3 rd = normalize(vec3(uv, 1.0));
+                vec3 ro = vec3(0, 0, -uZoom); vec3 rd = normalize(vec3(uv, 1.0));
                 float d, t = 0.0;
                 for(int i = 0; i < 64; i++) {
                     d = map(ro + rd * t);
@@ -60,30 +108,56 @@
                     t += d;
                 }
                 vec3 baseCol = mix(vec3(0.0, 0.8, 1.0), vec3(1.0, 0.1, 0.4), uPinch);
-                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.05/d * baseCol) : vec3(0.02);
+                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.05/d * baseCol) : vec3(0.01);
                 gl_FragColor = vec4(col, 1.0);
             }
         `;
 
+        // --- AUDIO ENGINE ---
+        function initSynth() {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            oscillator = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain();
+            filter = audioCtx.createBiquadFilter();
+
+            oscillator.type = 'sawtooth';
+            filter.type = 'lowpass';
+            
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            gainNode.gain.value = 0; // Start silent
+            oscillator.start();
+        }
+
+        function updateSynth() {
+            if (!oscillator) return;
+            // Map Hand Y to Frequency (Higher hand = higher pitch)
+            const freq = 100 + (1.0 - handY) * 400;
+            oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
+            
+            // Pinch increases Filter Cutoff (brighter sound)
+            filter.frequency.setTargetAtTime(400 + (pinchValue * 2000), audioCtx.currentTime, 0.1);
+            
+            // Base volume from slider
+            gainNode.gain.setTargetAtTime(config.volume, audioCtx.currentTime, 0.1);
+        }
+
+        // --- HANDS & THREE ---
         async function initHands() {
             const video = document.getElementById('webcam');
-            const hands = new window.Hands({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-            });
-
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
+            const hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+            hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.5 });
             hands.onResults((res) => {
                 if (res.multiHandLandmarks && res.multiHandLandmarks[0]) {
                     const h = res.multiHandLandmarks[0];
                     handX = h[8].x; handY = h[8].y;
-                    const dist = Math.hypot(h[8].x - h[4].x, h[8].y - h[4].y);
-                    pinchValue = THREE.MathUtils.lerp(pinchValue, (dist < 0.05 ? 1 : 0), 0.1);
-                    document.getElementById('status').innerText = "HAND TRACKED: ACTIVE";
-                } else {
-                    document.getElementById('status').innerText = "HAND TRACKED: SEARCHING...";
+                    const d = Math.hypot(h[8].x - h[4].x, h[8].y - h[4].y);
+                    pinchValue = THREE.MathUtils.lerp(pinchValue, (d < 0.06 ? 1 : 0), 0.1);
+                    document.getElementById('status').innerText = "TRACKING: ACTIVE";
                 }
             });
-
             const cameraFeed = new window.Camera(video, {
                 onFrame: async () => { await hands.send({image: video}); },
                 width: 640, height: 480
@@ -92,51 +166,43 @@
         }
 
         function initThree() {
-            scene = new THREE.Scene();
-            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
-
+            scene = new THREE.Scene();
+            camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
             material = new THREE.ShaderMaterial({
-                uniforms: {
-                    uTime: { value: 0 },
-                    uHandPos: { value: new THREE.Vector2(0.5, 0.5) },
-                    uPinch: { value: 0 },
-                    uRes: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
-                },
+                uniforms: { uTime:{value:0}, uHandPos:{value:new THREE.Vector2(0.5,0.5)}, uPinch:{value:0}, uComplexity:{value:8}, uZoom:{value:3.5}, uRes:{value:new THREE.Vector2(window.innerWidth, window.innerHeight)} },
                 vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
                 fragmentShader: fractalFS
             });
-
             scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
         }
 
         function animate(time) {
-            material.uniforms.uTime.value = time * 0.001;
+            material.uniforms.uTime.value = time * 0.001 * config.speed;
             material.uniforms.uHandPos.value.set(handX, handY);
             material.uniforms.uPinch.value = pinchValue;
+            material.uniforms.uComplexity.value = config.complexity;
+            updateSynth();
             renderer.render(scene, camera);
             requestAnimationFrame(animate);
         }
 
         document.getElementById('start-btn').onclick = async () => {
-            document.getElementById('start-btn').innerText = "LOADING AI...";
             try {
                 initThree();
+                initSynth();
                 await initHands();
                 animate();
                 document.getElementById('start-btn').remove();
-            } catch (err) {
-                alert("Camera access denied or hardware error: " + err);
-                document.getElementById('start-btn').innerText = "ERROR - TRY AGAIN";
-            }
+            } catch (err) { alert(err); }
         };
 
-        window.onresize = () => {
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            material.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
-        };
+        document.getElementById('panel-toggle').onclick = () => document.getElementById('side-panel').classList.toggle('open');
+        document.getElementById('param-complexity').oninput = (e) => config.complexity = parseFloat(e.target.value);
+        document.getElementById('param-volume').oninput = (e) => config.volume = parseFloat(e.target.value);
+        document.getElementById('param-speed').oninput = (e) => config.speed = parseFloat(e.target.value);
     </script>
 </body>
 </html>
