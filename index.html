@@ -2,83 +2,81 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Bio-Digital Fractal Interface</title>
+    <title>Ghost Fractal Neural Link</title>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     
     <style>
-        :root { --neon: #00ffcc; --bg: #050505; }
+        :root { --neon: #00ffcc; --ghost: #7000ff; --bg: #010103; }
         body { margin: 0; overflow: hidden; background: var(--bg); font-family: 'Courier New', monospace; color: white; }
-        
-        /* UI Panel */
         #side-panel {
-            position: fixed; top: 0; left: -300px; width: 300px; height: 100%;
-            background: rgba(0, 0, 0, 0.9); backdrop-filter: blur(15px);
-            border-right: 1px solid var(--neon); transition: 0.4s ease-in-out;
-            z-index: 1000; padding: 25px; box-sizing: border-box;
+            position: fixed; top: 0; left: -320px; width: 320px; height: 100%;
+            background: rgba(5, 5, 10, 0.9); backdrop-filter: blur(20px);
+            border-right: 1px solid var(--ghost); transition: 0.5s cubic-bezier(0.85, 0, 0.15, 1);
+            z-index: 1000; padding: 30px; box-sizing: border-box;
         }
         #side-panel.open { left: 0; }
         #panel-toggle {
-            position: absolute; top: 50%; right: -40px; width: 40px; height: 100px;
-            background: var(--neon); color: black; border: none; cursor: pointer;
+            position: absolute; top: 50%; right: -40px; width: 40px; height: 120px;
+            background: var(--ghost); color: white; border: none; cursor: pointer;
             writing-mode: vertical-rl; text-orientation: mixed; font-weight: bold;
             border-radius: 0 10px 10px 0; transform: translateY(-50%);
         }
-
-        .control-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 8px; font-size: 0.7rem; color: var(--neon); letter-spacing: 1px; }
-        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--neon); }
-        
-        /* Overlays */
-        #status { position: absolute; top: 20px; left: 20px; color: var(--neon); font-size: 0.8rem; z-index: 50; text-transform: uppercase; }
+        .control-group { margin-bottom: 22px; }
+        label { display: block; margin-bottom: 8px; font-size: 0.7rem; color: var(--neon); }
+        input[type=range] { width: 100%; cursor: pointer; accent-color: var(--ghost); }
+        select { width: 100%; background: #111; color: white; border: 1px solid var(--ghost); padding: 5px; }
+        #status { position: absolute; top: 20px; left: 20px; color: var(--ghost); font-size: 0.8rem; z-index: 50; }
         #start-btn { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            padding: 25px 50px; font-size: 1.2rem; cursor: pointer; z-index: 2000;
-            background: var(--neon); border: none; border-radius: 5px; font-weight: bold;
-            box-shadow: 0 0 40px rgba(0, 255, 204, 0.4);
+            padding: 25px 60px; font-size: 1.1rem; cursor: pointer; z-index: 2000;
+            background: none; color: var(--neon); border: 2px solid var(--neon); font-weight: bold;
         }
-        
-        /* Debug View */
-        #debug-canvas { position: absolute; bottom: 10px; right: 10px; width: 240px; height: 180px; 
-                        border: 1px solid var(--neon); border-radius: 8px; transform: scaleX(-1); background: #000; }
-        video { display: none; } /* Hide raw video, we use debug-canvas */
+        #debug-canvas { position: absolute; bottom: 15px; right: 15px; width: 200px; height: 150px; 
+                        border: 1px solid rgba(112, 0, 255, 0.3); border-radius: 4px; transform: scaleX(-1); }
+        video { display: none; }
     </style>
 </head>
 <body>
 
-    <div id="status">SYSTEM: STANDBY</div>
-    <button id="start-btn">INITIALIZE NEURAL LINK</button>
+    <div id="status">VOID STATUS: STANDBY</div>
+    <button id="start-btn">AWAKEN SYSTEM</button>
     <video id="webcam"></video>
     <canvas id="debug-canvas"></canvas>
 
     <div id="side-panel">
-        <button id="panel-toggle">SETTINGS</button>
-        <h2 style="color:var(--neon); font-size: 1rem;">FRACTAL PARAMETERS</h2>
+        <button id="panel-toggle">NEURAL CONTROLS</button>
+        <h2 style="color:var(--ghost); font-size: 0.9rem;">VOID CONFIG</h2>
         
         <div class="control-group">
-            <label>GEOMETRIC RECURSION</label>
-            <input type="range" id="param-complexity" min="2" max="14" value="8">
-        </div>
-        
-        <div class="control-group">
-            <label>SYNTH VOLUME</label>
-            <input type="range" id="param-volume" min="0" max="0.5" step="0.01" value="0.15">
+            <label>ENVIRONMENT</label>
+            <select id="param-env">
+                <option value="0">CAVERN</option>
+                <option value="1">SPIRES</option>
+                <option value="2">NEBULA</option>
+            </select>
         </div>
 
         <div class="control-group">
-            <label>FIELD OF VIEW</label>
-            <input type="range" id="param-zoom" min="1" max="7" step="0.1" value="3.5">
+            <label>GHOST TRAILS (PERSISTENCE)</label>
+            <input type="range" id="param-trails" min="0" max="0.95" step="0.01" value="0.7">
         </div>
 
         <div class="control-group">
-            <label>DEBUG SKELETON</label>
-            <input type="checkbox" id="param-debug" checked>
+            <label>ROTATION SPEED</label>
+            <input type="range" id="param-speed" min="0" max="2" step="0.1" value="0.4">
         </div>
-        
-        <p style="font-size: 0.6rem; opacity: 0.6; margin-top: 40px;">
-            Y-AXIS: Pitch Frequency<br>PINCH: Harmonic Filter
-        </p>
+
+        <div class="control-group">
+            <label>ZOOM</label>
+            <input type="range" id="param-zoom" min="1.5" max="8" step="0.1" value="4.0">
+        </div>
+
+        <div class="control-group">
+            <label>VOLUME</label>
+            <input type="range" id="param-volume" min="0" max="0.5" step="0.01" value="0.2">
+        </div>
     </div>
 
     <script type="importmap">
@@ -88,26 +86,29 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // --- STATE ---
-        let scene, camera, renderer, material, pinchValue = 0;
-        let handX = 0.5, handY = 0.5, isTracking = false;
-        let audioCtx, osc, gain, filter;
-        const config = { complexity: 8, volume: 0.15, zoom: 3.5, debug: true };
+        let scene, camera, renderer, material, pinchValue = 0, handX = 0.5, handY = 0.5;
+        let audioCtx, osc1, osc2, gainNode, filter;
+        let rtA, rtB, screenScene, screenMaterial; // Feedback loop vars
+        
+        const config = { speed: 0.4, trails: 0.7, zoom: 4.0, volume: 0.2, env: 0 };
 
-        // --- SHADER ---
         const fractalFS = `
             uniform float uTime; uniform vec2 uHandPos; uniform float uPinch;
-            uniform vec2 uRes; uniform float uComplexity; uniform float uZoom;
+            uniform vec2 uRes; uniform float uZoom; uniform float uEnv;
+            mat2 rot(float a) { return mat2(cos(a), sin(a), -sin(a), cos(a)); }
             float map(vec3 p) {
-                p.xz *= mat2(cos(uTime*0.2), sin(uTime*0.2), -sin(uTime*0.2), cos(uTime*0.2));
-                float scale = 1.3 + (uPinch * 0.2);
-                for(int i = 0; i < 15; i++) {
-                    if(float(i) > uComplexity) break;
-                    p = abs(p) - vec3(uHandPos.x * 1.6, uHandPos.y * 1.6, 1.0);
-                    float r2 = dot(p, p);
-                    p *= clamp(max(0.8/r2, 0.8), 0.0, 2.2) * scale;
+                p.yz *= rot(uHandPos.y * 3.14);
+                p.xz *= rot(uTime * 0.2 + uHandPos.x * 3.14);
+                float s = 1.0;
+                for(int i = 0; i < 10; i++) {
+                    p = abs(p) - vec3(0.5, 1.2, 0.8);
+                    if (p.x < p.y) p.xy = p.yx;
+                    if (p.x < p.z) p.xz = p.zx;
+                    float m = 2.0 + (uPinch * 1.5);
+                    p *= m; s *= m;
+                    p -= vec3(0.5, 1.5, 0.5) * m;
                 }
-                return length(p) * pow(scale, -8.0);
+                return length(p) / s;
             }
             void main() {
                 vec2 uv = (gl_FragCoord.xy - 0.5 * uRes.xy) / uRes.y;
@@ -118,124 +119,125 @@
                     if(d < 0.001 || t > 10.0) break;
                     t += d;
                 }
-                vec3 baseCol = mix(vec3(0.0, 0.9, 0.7), vec3(1.0, 0.1, 0.3), uPinch);
-                vec3 col = (t < 10.0) ? (baseCol * (1.0 - t/10.0) + 0.06/d * baseCol) : vec3(0.02, 0.02, 0.03);
+                vec3 col1 = (uEnv < 0.5) ? vec3(0.1, 0.0, 0.2) : (uEnv < 1.5) ? vec3(0.0, 0.4, 0.3) : vec3(0.5, 0.1, 0.1);
+                vec3 glowCol = mix(col1, vec3(0.0, 1.0, 0.8), uPinch);
+                vec3 col = (t < 10.0) ? (glowCol * (1.0 - t/10.0) + 0.02/d * glowCol) : vec3(0.0);
                 gl_FragColor = vec4(col, 1.0);
             }
         `;
 
-        // --- AUDIO ENGINE ---
+        const screenFS = `
+            uniform sampler2D tOld; uniform sampler2D tNew; uniform float uTrails;
+            void main() {
+                vec4 old = texture2D(tOld, gl_FragCoord.xy / vec2(${window.innerWidth}.0, ${window.innerHeight}.0));
+                vec4 current = texture2D(tNew, gl_FragCoord.xy / vec2(${window.innerWidth}.0, ${window.innerHeight}.0));
+                gl_FragColor = max(current, old * uTrails);
+            }
+        `;
+
         function initAudio() {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            osc = audioCtx.createOscillator();
-            gain = audioCtx.createGain();
-            filter = audioCtx.createBiquadFilter();
-            
-            osc.type = 'sawtooth';
-            filter.type = 'lowpass';
-            osc.connect(filter).connect(gain).connect(audioCtx.destination);
-            
-            gain.gain.value = 0;
-            osc.start();
+            osc1 = audioCtx.createOscillator(); osc2 = audioCtx.createOscillator();
+            gainNode = audioCtx.createGain(); filter = audioCtx.createBiquadFilter();
+            osc1.type = 'sawtooth'; osc2.type = 'square'; osc2.detune.value = 15;
+            filter.type = 'lowpass'; filter.Q.value = 8;
+            osc1.connect(filter); osc2.connect(filter); filter.connect(gainNode).connect(audioCtx.destination);
+            gainNode.gain.value = 0; osc1.start(); osc2.start();
         }
 
-        // --- HAND TRACKING ---
         async function initAI() {
             const video = document.getElementById('webcam');
             const debugCanvas = document.getElementById('debug-canvas');
             const debugCtx = debugCanvas.getContext('2d');
-
-            const hands = new window.Hands({
-                locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-            });
-
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-
+            const hands = new window.Hands({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+            hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5 });
             hands.onResults((res) => {
-                debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
-                debugCtx.drawImage(res.image, 0, 0, debugCanvas.width, debugCanvas.height);
-                
+                debugCtx.clearRect(0,0,200,150); debugCtx.drawImage(res.image, 0,0,200,150);
                 if (res.multiHandLandmarks && res.multiHandLandmarks[0]) {
                     const h = res.multiHandLandmarks[0];
-                    if (config.debug) {
-                        window.drawConnectors(debugCtx, h, window.HAND_CONNECTIONS, {color: '#00ffcc', lineWidth: 2});
-                        window.drawLandmarks(debugCtx, h, {color: '#ff0055', lineWidth: 1});
-                    }
-                    
+                    window.drawConnectors(debugCtx, h, window.HAND_CONNECTIONS, {color: '#7000ff'});
                     handX = h[8].x; handY = h[8].y;
                     const d = Math.hypot(h[8].x - h[4].x, h[8].y - h[4].y);
-                    pinchValue = THREE.MathUtils.lerp(pinchValue, (d < 0.06 ? 1 : 0), 0.1);
-                    
-                    document.getElementById('status').innerText = "SYSTEM: LINK ACTIVE";
-                    
-                    // Update Synth
-                    if (osc) {
-                        osc.frequency.setTargetAtTime(100 + (1.0 - handY) * 500, audioCtx.currentTime, 0.1);
-                        filter.frequency.setTargetAtTime(300 + (pinchValue * 3000), audioCtx.currentTime, 0.1);
-                        gain.gain.setTargetAtTime(config.volume, audioCtx.currentTime, 0.1);
-                    }
-                } else {
-                    document.getElementById('status').innerText = "SYSTEM: SEARCHING...";
-                    if(gain) gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
+                    pinchValue = THREE.MathUtils.lerp(pinchValue, (d < 0.05 ? 1 : 0), 0.15);
+                    document.getElementById('status').innerText = "VOID STATUS: LINK ACTIVE";
                 }
             });
-
-            const cameraFeed = new window.Camera(video, {
-                onFrame: async () => { await hands.send({image: video}); },
-                width: 640, height: 480
-            });
+            const cameraFeed = new window.Camera(video, { onFrame: async () => { await hands.send({image: video}); }, width: 640, height: 480 });
             return cameraFeed.start();
         }
 
         function initThree() {
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer();
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
+
+            // Targets for trails
+            rtA = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+            rtB = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+
             scene = new THREE.Scene();
             camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
             material = new THREE.ShaderMaterial({
-                uniforms: { uTime:{value:0}, uHandPos:{value:new THREE.Vector2(0.5,0.5)}, uPinch:{value:0}, uComplexity:{value:8}, uZoom:{value:3.5}, uRes:{value:new THREE.Vector2(window.innerWidth, window.innerHeight)} },
+                uniforms: { uTime:{value:0}, uHandPos:{value:new THREE.Vector2(0.5,0.5)}, uPinch:{value:0}, uZoom:{value:4}, uEnv:{value:0}, uRes:{value:new THREE.Vector2(window.innerWidth, window.innerHeight)} },
                 vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
                 fragmentShader: fractalFS
             });
             scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+
+            screenScene = new THREE.Scene();
+            screenMaterial = new THREE.ShaderMaterial({
+                uniforms: { tOld:{value:null}, tNew:{value:null}, uTrails:{value:0.7} },
+                vertexShader: `void main() { gl_Position = vec4(position, 1.0); }`,
+                fragmentShader: screenFS
+            });
+            screenScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), screenMaterial));
         }
 
         function animate(time) {
-            material.uniforms.uTime.value = time * 0.001;
+            material.uniforms.uTime.value = time * 0.001 * config.speed;
             material.uniforms.uHandPos.value.set(handX, handY);
             material.uniforms.uPinch.value = pinchValue;
-            material.uniforms.uComplexity.value = config.complexity;
             material.uniforms.uZoom.value = config.zoom;
+            material.uniforms.uEnv.value = config.env;
+
+            // Audio update
+            if(osc1) {
+                let baseFreq = 60 + (1.0 - handY) * 200 + (Math.sin(time*0.005)*5);
+                osc1.frequency.setTargetAtTime(baseFreq, audioCtx.currentTime, 0.1);
+                osc2.frequency.setTargetAtTime(baseFreq * 0.505, audioCtx.currentTime, 0.1);
+                filter.frequency.setTargetAtTime(200 + (pinchValue * 3000), audioCtx.currentTime, 0.1);
+                gainNode.gain.setTargetAtTime(config.volume, audioCtx.currentTime, 0.1);
+            }
+
+            // Render Fractal to RT A
+            renderer.setRenderTarget(rtA);
             renderer.render(scene, camera);
+
+            // Blend RT A with RT B (Old) into the Screen
+            screenMaterial.uniforms.tNew.value = rtA.texture;
+            screenMaterial.uniforms.tOld.value = rtB.texture;
+            screenMaterial.uniforms.uTrails.value = config.trails;
+            
+            renderer.setRenderTarget(null);
+            renderer.render(screenScene, camera);
+
+            // Swap: Copy Screen back to RT B for next frame
+            renderer.setRenderTarget(rtB);
+            renderer.render(screenScene, camera);
+            renderer.setRenderTarget(null);
+
             requestAnimationFrame(animate);
         }
 
         document.getElementById('start-btn').onclick = async (e) => {
-            e.target.innerText = "CALIBRATING...";
-            try {
-                initThree();
-                initAudio();
-                await initAI();
-                animate();
-                e.target.remove();
-            } catch (err) {
-                alert("Interface Failed: " + err);
-                e.target.innerText = "HARDWARE ERROR";
-            }
+            initThree(); initAudio(); await initAI(); animate(); e.target.remove();
         };
-
-        // UI Listeners
         document.getElementById('panel-toggle').onclick = () => document.getElementById('side-panel').classList.toggle('open');
-        document.getElementById('param-complexity').oninput = (e) => config.complexity = parseFloat(e.target.value);
-        document.getElementById('param-volume').oninput = (e) => config.volume = parseFloat(e.target.value);
+        document.getElementById('param-trails').oninput = (e) => config.trails = parseFloat(e.target.value);
+        document.getElementById('param-speed').oninput = (e) => config.speed = parseFloat(e.target.value);
         document.getElementById('param-zoom').oninput = (e) => config.zoom = parseFloat(e.target.value);
-        document.getElementById('param-debug').onchange = (e) => config.debug = e.target.checked;
-        
-        window.onresize = () => {
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            material.uniforms.uRes.value.set(window.innerWidth, window.innerHeight);
-        };
+        document.getElementById('param-volume').oninput = (e) => config.volume = parseFloat(e.target.value);
+        document.getElementById('param-env').onchange = (e) => config.env = parseFloat(e.target.value);
     </script>
 </body>
 </html>
